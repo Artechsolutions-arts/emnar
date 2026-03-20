@@ -78,7 +78,7 @@ MAX_PIXELS=800000
 ### Local Models (Mac only)
 LOCAL_EMBEDDING_MODEL=BAAI/bge-large-en-v1.5
 LOCAL_PG_TABLE=rag.md_chunks_local
-LOCAL_DEFAULT_PDF=/Users/yourname/pharma-docs/DEC-2019/DEC-U2-PUR-19-20-5.pdf
+LOCAL_DEFAULT_INPUT=/Users/yourname/pharma-docs/DEC-2019
 LOCAL_WEIGHTS_DIR=/Users/yourname/pharma-docs/weights/DotsOCR
 ```
 
@@ -247,14 +247,15 @@ python ocr_embed_pipeline_local.py --create-table
 ### 9. Run the pipeline
 
 ```bash
-# Default PDF (from LOCAL_DEFAULT_PDF in .env)
+# Default: all PDFs in LOCAL_DEFAULT_INPUT or ./DEC-2019 (page count auto-detected)
 python ocr_embed_pipeline_local.py
 
-# Specific PDF — 5 pages
-python ocr_embed_pipeline_local.py "/path/to/DEC-U2-PUR-19-20-5.pdf" --pages 5
+# Specific folder
+python ocr_embed_pipeline_local.py "/path/to/DEC-2019"
 
-# Specific PDF — custom page count
-python ocr_embed_pipeline_local.py "/path/to/DEC-U2-PUR-19-20-5.pdf" --pages 10
+# Single PDF (pages auto-detected; use --pages only to override)
+python ocr_embed_pipeline_local.py "/path/to/DEC-U2-PUR-19-20-5.pdf"
+python ocr_embed_pipeline_local.py "/path/to/file.pdf" --pages 10
 
 # OCR only — skip embedding and DB
 python ocr_embed_pipeline_local.py "/path/to/file.pdf" --skip-embed
@@ -287,7 +288,7 @@ python tools/download_model.py --type huggingface --name rednote-hilab/dots.ocr
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--pages N` | Number of PDF pages to OCR | `5` |
+| `--pages N` | Override page count (default: auto-detect) | auto |
 | `--force-ocr` | Re-OCR even if `combined_md/` cache exists | off |
 | `--skip-embed` | Stop after OCR + markdown, skip DB storage | off |
 | `--chunk-size N` | Token size per chunk | `800` |

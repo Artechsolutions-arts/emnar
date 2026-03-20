@@ -10,6 +10,8 @@ Differences from ocr_embed_pipeline.py
 • EMBEDDING_DIM = 1024  →  pgvector column must be vector(1024)
 • Default table : rag.md_chunks_local  (avoids collision with the OpenAI 1536-dim table)
 • No rate-limit sleeps between embedding batches (local inference, no quota)
+• Page count auto-detected (PyMuPDF); process a whole folder of PDFs like the Windows pipeline
+• UTF-8 stdout (safe if DotsOCR prints emoji); MPS cache cleared after each document OCR
 
 Mac Studio M-series setup (one-time)
 --------------------------------------
@@ -38,17 +40,26 @@ pgvector table (run once, or pass --create-table flag)
 
 Usage
 ------
-    python ocr_embed_pipeline_local.py                          # default PDF from .env
+    # Default: all PDFs in LOCAL_DEFAULT_INPUT or ./DEC-2019
+    python ocr_embed_pipeline_local.py
+
     python ocr_embed_pipeline_local.py path/to/file.pdf
-    python ocr_embed_pipeline_local.py --force-ocr              # re-OCR even if MD exists
-    python ocr_embed_pipeline_local.py --skip-embed             # OCR + MD only, no DB
-    python ocr_embed_pipeline_local.py --create-table           # create pgvector table then exit
-    python ocr_embed_pipeline_local.py --pages 10               # override page count
+    python ocr_embed_pipeline_local.py /path/to/folder_with_pdfs
+    python ocr_embed_pipeline_local.py --force-ocr
+    python ocr_embed_pipeline_local.py --skip-embed
+    python ocr_embed_pipeline_local.py --create-table
+    python ocr_embed_pipeline_local.py path/to/file.pdf --pages 10   # override page count
 """
 
-import os, re, json, time, argparse
+import sys, os, re, json, time, argparse
 from pathlib import Path
 from dotenv import load_dotenv
+
+# UTF-8 stdout/stderr (DotsOCR emoji; harmless on macOS, helps if terminal misconfigured)
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 # ── Load .env ──────────────────────────────────────────────────────────────────
 load_dotenv(Path(__file__).parent / ".env", override=True)
@@ -72,10 +83,11 @@ PG_USER = os.environ.get("POSTGRES_USER",     "postgres")
 PG_PASS = os.environ.get("POSTGRES_PASSWORD", "")
 PG_DB   = os.environ.get("POSTGRES_DATABASE", "ragchat")
 
-# Default PDF — set LOCAL_DEFAULT_PDF in .env or pass as CLI argument
-DEFAULT_PDF = os.environ.get(
-    "LOCAL_DEFAULT_PDF",
-    str(Path(__file__).parent / "DEC-2019" / "DEC-U2-PUR-19-20-5.pdf"),
+# Default input: folder of PDFs (same idea as Windows DEFAULT_INPUT).
+# Override with LOCAL_DEFAULT_INPUT=/path/to/DEC-2019 in .env
+DEFAULT_INPUT = os.environ.get(
+    "LOCAL_DEFAULT_INPUT",
+    str(Path(__file__).parent / "DEC-2019"),
 )
 
 
@@ -232,6 +244,27 @@ def run_ocr(pdf_path: str, total_pages: int = 5, device: str = "mps") -> str:
                 page_idx=idx,
             )
             print(f"      done in {time.time()-t0:.1f}s")
+
+        # ── Release model + images before next document (MPS / CUDA / CPU) ───
+        import gc, torch
+        del parser
+        del all_images
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+            try:
+                alloc = torch.cuda.memory_allocated() / 1024**3
+                res = torch.cuda.memory_reserved() / 1024**3
+                print(f"[GPU] Memory freed — allocated: {alloc:.2f} GB  reserved: {res:.2f} GB")
+            except Exception:
+                pass
+        if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
+            try:
+                torch.mps.empty_cache()
+                print("[MPS] Cache cleared after OCR")
+            except Exception:
+                pass
 
         done = _completed_pages(doc_dir, stem)
 
@@ -406,6 +439,87 @@ def store(doc_id: str, chunks: list[str], embeddings: list[list[float]]):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Helpers – page count + single-document runner (matches Windows pipeline)
+# ─────────────────────────────────────────────────────────────────────────────
+def get_pdf_page_count(pdf_path: str) -> int:
+    """Return total page count of a PDF using PyMuPDF (fitz)."""
+    import fitz  # PyMuPDF
+    with fitz.open(pdf_path) as doc:
+        return len(doc)
+
+
+def process_one(
+    pdf: str,
+    pages: int | None,
+    force_ocr: bool,
+    skip_embed: bool,
+    chunk_size: int,
+    overlap: int,
+    batch_size: int,
+    device: str,
+) -> dict:
+    """
+    Run full pipeline (Steps 1–5) for one PDF.
+    pages=None → auto-detect page count.
+    """
+    stem   = Path(pdf).stem
+    doc_id = stem
+    total_pages = pages if pages is not None else get_pdf_page_count(pdf)
+
+    print(f"\n{'='*60}")
+    print(f"  PDF    : {pdf}")
+    print(f"  doc_id : {doc_id}")
+    print(
+        f"  Pages  : {total_pages}  (auto-detected)"
+        if pages is None
+        else f"  Pages  : {total_pages}  (manual)"
+    )
+    print(f"  DB     : {PG_DB}@{PG_HOST}:{PG_PORT}  table={PG_TABLE}")
+    print(f"  Embed  : {EMBEDDING_MODEL}  dim={EMBEDDING_DIM}  (local)")
+    print(f"  Device : {device.upper()}")
+    print(f"{'='*60}\n")
+
+    t0 = time.time()
+
+    combined_path = os.path.join(COMBINED_DIR, f"{stem}.md")
+    if force_ocr or not os.path.exists(combined_path):
+        print("[STEP 1] Running OCR ...")
+        combined_path = run_ocr(pdf, total_pages=total_pages, device=device)
+    else:
+        print(f"[STEP 1] OCR skipped (combined_md exists: {combined_path})")
+
+    print("\n[STEP 2] Building final markdown files ...")
+    clean_path, pages_path = build_final_md(combined_path, stem)
+
+    if skip_embed:
+        print("\n[DONE] --skip-embed set. Stopping after markdown generation.")
+        return {"doc_id": doc_id, "chunks": 0, "elapsed": time.time() - t0}
+
+    print("\n[STEP 3] Chunking ...")
+    with open(clean_path, encoding="utf-8") as f:
+        clean_text = f.read()
+    chunks = chunk_text(clean_text, chunk_size=chunk_size, overlap=overlap)
+
+    print("\n[STEP 4] Embedding (local model) ...")
+    t1   = time.time()
+    vecs = embed_chunks(chunks, batch_size=batch_size, device=device)
+    print(f"         ({time.time()-t1:.1f}s)")
+
+    print("\n[STEP 5] Storing in pgvector ...")
+    store(doc_id, chunks, vecs)
+
+    elapsed = time.time() - t0
+    print(f"\n{'='*60}")
+    print(f"  COMPLETE  —  {len(chunks)} chunks stored in {PG_TABLE}")
+    print(f"  Final MD  —  {clean_path}")
+    print(f"  Pages MD  —  {pages_path}")
+    print(f"  Time      :  {elapsed:.1f}s")
+    print(f"{'='*60}\n")
+
+    return {"doc_id": doc_id, "chunks": len(chunks), "elapsed": elapsed}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Helper – create pgvector table (run once, or pass --create-table)
 # ─────────────────────────────────────────────────────────────────────────────
 def create_table():
@@ -447,16 +561,26 @@ def create_table():
 # ─────────────────────────────────────────────────────────────────────────────
 def main():
     ap = argparse.ArgumentParser(
-        description="OCR -> Chunk -> Local Embed (BGE) -> pgvector  [Apple Silicon]"
+        description="OCR -> Chunk -> Local Embed (BGE) -> pgvector  |  single PDF or folder"
     )
-    ap.add_argument("pdf",           nargs="?", default=DEFAULT_PDF)
-    ap.add_argument("--pages",       type=int,  default=5,    help="Total PDF pages")
-    ap.add_argument("--force-ocr",   action="store_true",     help="Re-OCR even if MD exists")
-    ap.add_argument("--skip-embed",  action="store_true",     help="Stop after producing final MD")
-    ap.add_argument("--create-table",action="store_true",     help="Create pgvector table and exit")
-    ap.add_argument("--chunk-size",  type=int,  default=800)
-    ap.add_argument("--overlap",     type=int,  default=150)
-    ap.add_argument("--batch-size",  type=int,  default=64,   help="Embedding batch size")
+    ap.add_argument(
+        "input",
+        nargs="?",
+        default=DEFAULT_INPUT,
+        help="PDF file or folder of PDFs (default: LOCAL_DEFAULT_INPUT or ./DEC-2019)",
+    )
+    ap.add_argument(
+        "--pages",
+        type=int,
+        default=None,
+        help="Override page count (default: auto-detect from PDF)",
+    )
+    ap.add_argument("--force-ocr",    action="store_true", help="Re-OCR even if MD exists")
+    ap.add_argument("--skip-embed",   action="store_true", help="Stop after producing final MD")
+    ap.add_argument("--create-table", action="store_true", help="Create pgvector table and exit")
+    ap.add_argument("--chunk-size",   type=int, default=800)
+    ap.add_argument("--overlap",      type=int, default=150)
+    ap.add_argument("--batch-size",   type=int, default=64, help="Embedding batch size")
     args = ap.parse_args()
 
     if args.create_table:
@@ -465,62 +589,65 @@ def main():
 
     device = _get_device()
 
-    pdf    = os.path.abspath(args.pdf)
-    stem   = Path(pdf).stem
-    doc_id = stem
+    input_path = os.path.abspath(args.input)
 
-    print(f"\n{'='*60}")
-    print(f"  PDF      : {pdf}")
-    print(f"  doc_id   : {doc_id}")
-    print(f"  DB       : {PG_DB}@{PG_HOST}:{PG_PORT}  table={PG_TABLE}")
-    print(f"  Embed    : {EMBEDDING_MODEL}  dim={EMBEDDING_DIM}  (local / offline)")
-    print(f"  Device   : {device.upper()}")
-    print(f"{'='*60}\n")
-
-    t0 = time.time()
-
-    # ── Step 1: OCR ────────────────────────────────────────────────────────
-    combined_path = os.path.join(COMBINED_DIR, f"{stem}.md")
-    if args.force_ocr or not os.path.exists(combined_path):
-        print("[STEP 1] Running OCR ...")
-        combined_path = run_ocr(pdf, total_pages=args.pages, device=device)
+    if os.path.isdir(input_path):
+        pdf_files = sorted(str(p) for p in Path(input_path).glob("*.pdf"))
+        if not pdf_files:
+            print(f"[ERROR] No *.pdf files found in folder: {input_path}")
+            return
+        print(f"\n[FOLDER] Found {len(pdf_files)} PDF(s) in {input_path}")
+        for i, p in enumerate(pdf_files, 1):
+            print(f"         {i:>2}. {Path(p).name}")
+        print()
+    elif os.path.isfile(input_path):
+        pdf_files = [input_path]
     else:
-        print(f"[STEP 1] OCR skipped (combined_md exists: {combined_path})")
-
-    # ── Step 2: Build final clean MD files ─────────────────────────────────
-    print("\n[STEP 2] Building final markdown files ...")
-    clean_path, pages_path = build_final_md(combined_path, stem)
-
-    if args.skip_embed:
-        print("\n[DONE] --skip-embed set. Stopping after markdown generation.")
+        print(f"[ERROR] Path does not exist: {input_path}")
         return
 
-    # ── Step 3: Chunk ──────────────────────────────────────────────────────
-    print("\n[STEP 3] Chunking ...")
-    with open(clean_path, encoding="utf-8") as f:
-        clean_text = f.read()
-    chunks = chunk_text(clean_text, chunk_size=args.chunk_size, overlap=args.overlap)
+    total_start = time.time()
+    results     = []
+    failed      = []
 
-    # ── Step 4: Embed (local BGE on MPS) ───────────────────────────────────
-    print("\n[STEP 4] Embedding (local model) ...")
-    t1   = time.time()
-    vecs = embed_chunks(chunks, batch_size=args.batch_size, device=device)
-    print(f"         ({time.time()-t1:.1f}s)")
+    for idx, pdf in enumerate(pdf_files, 1):
+        if len(pdf_files) > 1:
+            print(f"\n{'#'*60}")
+            print(f"  Document {idx}/{len(pdf_files)}: {Path(pdf).name}")
+            print(f"{'#'*60}")
+        try:
+            result = process_one(
+                pdf         = pdf,
+                pages       = args.pages,
+                force_ocr   = args.force_ocr,
+                skip_embed  = args.skip_embed,
+                chunk_size  = args.chunk_size,
+                overlap     = args.overlap,
+                batch_size  = args.batch_size,
+                device      = device,
+            )
+            results.append(result)
+        except Exception as exc:
+            print(f"\n[ERROR] Failed on {Path(pdf).name}: {exc}")
+            failed.append({"pdf": Path(pdf).name, "error": str(exc)})
 
-    # ── Step 5: Store ──────────────────────────────────────────────────────
-    print("\n[STEP 5] Storing in pgvector ...")
-    store(doc_id, chunks, vecs)
+    if len(pdf_files) > 1:
+        total_elapsed = time.time() - total_start
+        total_chunks  = sum(r["chunks"] for r in results)
+        print(f"\n{'='*60}")
+        print(f"  FOLDER COMPLETE")
+        print(f"  Processed : {len(results)}/{len(pdf_files)} documents")
+        print(f"  Chunks    : {total_chunks} total stored in {PG_TABLE}")
+        print(f"  Total time: {total_elapsed:.1f}s")
+        if failed:
+            print(f"\n  FAILED ({len(failed)}):")
+            for f in failed:
+                print(f"    • {f['pdf']}  →  {f['error']}")
+        print(f"{'='*60}\n")
 
-    print(f"\n{'='*60}")
-    print(f"  COMPLETE  —  {len(chunks)} chunks stored in {PG_TABLE}")
-    print(f"  Final MD  —  {clean_path}")
-    print(f"  Pages MD  —  {pages_path}")
-    print(f"  Total time: {time.time()-t0:.1f}s")
-    print(f"{'='*60}\n")
     print("  RAG query tip:")
     print("  Embed questions with prefix: 'Represent this sentence: <your question>'")
-    print("  Then run:  SELECT content FROM rag.md_chunks_local")
-    print("             ORDER BY embedding <=> $1 LIMIT 5;")
+    print(f"  Then: SELECT content FROM {PG_TABLE} ORDER BY embedding <=> $1 LIMIT 5;")
     print(f"{'='*60}\n")
 
 
