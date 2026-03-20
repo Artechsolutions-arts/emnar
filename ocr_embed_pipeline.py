@@ -10,13 +10,20 @@ Behaviour
     <doc>.md         – full text markdown (human-readable, no base64)
     <doc>_pages.md   – same, with explicit ## Page N separators kept intact
 • Inserts (doc_id, chunk_index, content, embedding) into rag.md_chunks
+• Page count is auto-detected from each PDF (PyMuPDF) — no need to pass --pages
 
 Usage
 -----
-    python ocr_embed_pipeline.py                          # default PDF
+    # Single PDF
     python ocr_embed_pipeline.py path/to/file.pdf
-    python ocr_embed_pipeline.py --force-ocr              # re-OCR even if MD exists
-    python ocr_embed_pipeline.py --skip-embed             # OCR + MD only, no DB
+
+    # Entire folder — processes every *.pdf found inside (DEFAULT if no arg given)
+    python ocr_embed_pipeline.py "D:/AI_ML/New folder (2)/DEC-2019"
+
+    # Flags work the same for both modes
+    python ocr_embed_pipeline.py "D:/AI_ML/New folder (2)/DEC-2019" --force-ocr
+    python ocr_embed_pipeline.py "D:/AI_ML/New folder (2)/DEC-2019" --skip-embed
+    python ocr_embed_pipeline.py path/to/file.pdf --pages 3   # override auto page count
 """
 
 import os, re, json, time, argparse
@@ -41,7 +48,7 @@ PG_USER = os.environ.get("POSTGRES_USER",     "postgres")
 PG_PASS = os.environ.get("POSTGRES_PASSWORD", "")
 PG_DB   = os.environ.get("POSTGRES_DATABASE", "ragchat")
 
-DEFAULT_PDF = r"D:\AI_ML\New folder (2)\DEC-2019\DEC-U2-PUR-19-20-5.pdf"
+DEFAULT_INPUT = r"D:\AI_ML\New folder (2)\DEC-2019"   # folder or single PDF
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -319,25 +326,38 @@ def store(doc_id: str, chunks: list[str], embeddings: list[list[float]]):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# MAIN
+# Helpers – page count detection + single-document runner
 # ─────────────────────────────────────────────────────────────────────────────
-def main():
-    ap = argparse.ArgumentParser(description="OCR -> Chunk -> Embed -> rag.md_chunks")
-    ap.add_argument("pdf",          nargs="?", default=DEFAULT_PDF)
-    ap.add_argument("--pages",      type=int,  default=5,   help="Total PDF pages")
-    ap.add_argument("--force-ocr",  action="store_true",    help="Re-OCR even if MD exists")
-    ap.add_argument("--skip-embed", action="store_true",    help="Stop after producing final MD")
-    ap.add_argument("--chunk-size", type=int,  default=800)
-    ap.add_argument("--overlap",    type=int,  default=150)
-    args = ap.parse_args()
+def get_pdf_page_count(pdf_path: str) -> int:
+    """Return total page count of a PDF using PyMuPDF (fitz)."""
+    import fitz  # PyMuPDF
+    with fitz.open(pdf_path) as doc:
+        return len(doc)
 
-    pdf    = os.path.abspath(args.pdf)
+
+def process_one(
+    pdf: str,
+    pages: int | None,
+    force_ocr: bool,
+    skip_embed: bool,
+    chunk_size: int,
+    overlap: int,
+) -> dict:
+    """
+    Run the full pipeline (Steps 1-5) for a single PDF.
+    Returns a result dict with doc_id, chunks count, and timing.
+    page_count is auto-detected when pages=None.
+    """
     stem   = Path(pdf).stem
     doc_id = stem
+
+    total_pages = pages if pages is not None else get_pdf_page_count(pdf)
 
     print(f"\n{'='*60}")
     print(f"  PDF    : {pdf}")
     print(f"  doc_id : {doc_id}")
+    print(f"  Pages  : {total_pages}  (auto-detected)" if pages is None
+          else f"  Pages  : {total_pages}  (manual)")
     print(f"  DB     : {PG_DB}@{PG_HOST}:{PG_PORT}  table=rag.md_chunks")
     print(f"  Embed  : {EMBEDDING_MODEL}  dim={EMBEDDING_DIM}")
     print(f"{'='*60}\n")
@@ -346,9 +366,9 @@ def main():
 
     # ── Step 1: OCR ────────────────────────────────────────────────────────
     combined_path = os.path.join(COMBINED_DIR, f"{stem}.md")
-    if args.force_ocr or not os.path.exists(combined_path):
+    if force_ocr or not os.path.exists(combined_path):
         print("[STEP 1] Running OCR ...")
-        combined_path = run_ocr(pdf, total_pages=args.pages)
+        combined_path = run_ocr(pdf, total_pages=total_pages)
     else:
         print(f"[STEP 1] OCR skipped (combined_md exists: {combined_path})")
 
@@ -356,19 +376,19 @@ def main():
     print("\n[STEP 2] Building final markdown files ...")
     clean_path, pages_path = build_final_md(combined_path, stem)
 
-    if args.skip_embed:
+    if skip_embed:
         print("\n[DONE] --skip-embed set. Stopping after markdown generation.")
-        return
+        return {"doc_id": doc_id, "chunks": 0, "elapsed": time.time() - t0}
 
     # ── Step 3: Chunk ──────────────────────────────────────────────────────
     print("\n[STEP 3] Chunking ...")
     with open(clean_path, encoding="utf-8") as f:
         clean_text = f.read()
-    chunks = chunk_text(clean_text, chunk_size=args.chunk_size, overlap=args.overlap)
+    chunks = chunk_text(clean_text, chunk_size=chunk_size, overlap=overlap)
 
     # ── Step 4: Embed ──────────────────────────────────────────────────────
     print("\n[STEP 4] Embedding ...")
-    t1  = time.time()
+    t1   = time.time()
     vecs = embed_chunks(chunks)
     print(f"         ({time.time()-t1:.1f}s)")
 
@@ -376,12 +396,100 @@ def main():
     print("\n[STEP 5] Storing in rag.md_chunks ...")
     store(doc_id, chunks, vecs)
 
+    elapsed = time.time() - t0
     print(f"\n{'='*60}")
     print(f"  COMPLETE  —  {len(chunks)} chunks stored in rag.md_chunks")
     print(f"  Final MD  —  {clean_path}")
     print(f"  Pages MD  —  {pages_path}")
-    print(f"  Total time: {time.time()-t0:.1f}s")
+    print(f"  Time      :  {elapsed:.1f}s")
     print(f"{'='*60}\n")
+
+    return {"doc_id": doc_id, "chunks": len(chunks), "elapsed": elapsed}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MAIN
+# ─────────────────────────────────────────────────────────────────────────────
+def main():
+    ap = argparse.ArgumentParser(
+        description="OCR -> Chunk -> Embed -> rag.md_chunks  |  single PDF or entire folder"
+    )
+    ap.add_argument(
+        "input",
+        nargs="?",
+        default=DEFAULT_INPUT,
+        help="Path to a PDF file  OR  a folder containing PDFs (default: DEC-2019 folder)",
+    )
+    ap.add_argument(
+        "--pages",
+        type=int,
+        default=None,
+        help="Override page count (default: auto-detect from PDF)",
+    )
+    ap.add_argument("--force-ocr",  action="store_true", help="Re-OCR even if MD exists")
+    ap.add_argument("--skip-embed", action="store_true", help="Stop after producing final MD")
+    ap.add_argument("--chunk-size", type=int, default=800)
+    ap.add_argument("--overlap",    type=int, default=150)
+    args = ap.parse_args()
+
+    input_path = os.path.abspath(args.input)
+
+    # ── Resolve list of PDFs to process ────────────────────────────────────
+    if os.path.isdir(input_path):
+        pdf_files = sorted(
+            str(p) for p in Path(input_path).glob("*.pdf")
+        )
+        if not pdf_files:
+            print(f"[ERROR] No *.pdf files found in folder: {input_path}")
+            return
+        print(f"\n[FOLDER] Found {len(pdf_files)} PDF(s) in {input_path}")
+        for i, p in enumerate(pdf_files, 1):
+            print(f"         {i:>2}. {Path(p).name}")
+        print()
+    elif os.path.isfile(input_path):
+        pdf_files = [input_path]
+    else:
+        print(f"[ERROR] Path does not exist: {input_path}")
+        return
+
+    # ── Process each PDF ───────────────────────────────────────────────────
+    total_start = time.time()
+    results     = []
+    failed      = []
+
+    for idx, pdf in enumerate(pdf_files, 1):
+        if len(pdf_files) > 1:
+            print(f"\n{'#'*60}")
+            print(f"  Document {idx}/{len(pdf_files)}: {Path(pdf).name}")
+            print(f"{'#'*60}")
+        try:
+            result = process_one(
+                pdf        = pdf,
+                pages      = args.pages,         # None → auto-detect
+                force_ocr  = args.force_ocr,
+                skip_embed = args.skip_embed,
+                chunk_size = args.chunk_size,
+                overlap    = args.overlap,
+            )
+            results.append(result)
+        except Exception as exc:
+            print(f"\n[ERROR] Failed on {Path(pdf).name}: {exc}")
+            failed.append({"pdf": Path(pdf).name, "error": str(exc)})
+
+    # ── Folder summary ─────────────────────────────────────────────────────
+    if len(pdf_files) > 1:
+        total_elapsed = time.time() - total_start
+        total_chunks  = sum(r["chunks"] for r in results)
+        print(f"\n{'='*60}")
+        print(f"  FOLDER COMPLETE")
+        print(f"  Processed : {len(results)}/{len(pdf_files)} documents")
+        print(f"  Chunks    : {total_chunks} total stored in rag.md_chunks")
+        print(f"  Total time: {total_elapsed:.1f}s")
+        if failed:
+            print(f"\n  FAILED ({len(failed)}):")
+            for f in failed:
+                print(f"    • {f['pdf']}  →  {f['error']}")
+        print(f"{'='*60}\n")
 
 
 if __name__ == "__main__":
