@@ -172,6 +172,18 @@ def run_ocr(pdf_path: str, total_pages: int = 5) -> str:
             )
             print(f"      done in {time.time()-t0:.1f}s")
 
+        # ── Free GPU memory before next document ─────────────────────────
+        import gc, torch
+        del parser
+        del all_images
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+            allocated = torch.cuda.memory_allocated() / 1024**3
+            reserved  = torch.cuda.memory_reserved()  / 1024**3
+            print(f"[GPU] Memory freed — allocated: {allocated:.2f} GB  reserved: {reserved:.2f} GB")
+
         # reload done set after OCR
         done = _completed_pages(doc_dir, stem)
 
