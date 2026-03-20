@@ -60,7 +60,10 @@ PG_TABLE        = os.environ.get("LOCAL_PG_TABLE",      "rag.md_chunks_local")
 OUTPUT_DIR      = os.environ.get("OUTPUT_DIR",          "./ocr_output")
 COMBINED_DIR    = os.environ.get("COMBINED_MD_DIR",     "./combined_md")
 FINAL_MD_DIR    = "./final_md"
-WEIGHTS_DIR     = str(Path(__file__).parent / "weights" / "DotsOCR")
+WEIGHTS_DIR     = os.environ.get(
+    "LOCAL_WEIGHTS_DIR",
+    str(Path(__file__).parent / "weights" / "DotsOCR"),  # fallback: relative path
+)
 MAX_PIXELS      = int(os.environ.get("MAX_PIXELS",      "800000"))
 
 PG_HOST = os.environ.get("POSTGRES_HOST",     "localhost")
