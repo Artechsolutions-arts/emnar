@@ -48,10 +48,10 @@ Ensure all dependencies pass their `healthcheck` metrics.
 Ensure your `.env` file matches the configurations defined in your Compose file and environment requirements:
 
 ```ini
-PG_USER=postgres
-PG_PASSWORD=<DB_PASSWORD>
-PG_DATABASE=ragchat
-API_KEY=<API_KEY>
+PG_USER=<your_postgres_user>
+PG_PASSWORD=<your_postgres_password>
+PG_DATABASE=<your_postgres_database>
+API_KEY=<your_secure_api_key>
 # Optional configuration parameters for SeaweedFS & RabbitMQ
 ```
 

@@ -179,7 +179,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 from fastapi import Request, HTTPException
 from fastapi.responses import JSONResponse
 
-API_KEY = os.getenv("API_KEY", "<API_KEY>")
+API_KEY = os.getenv("API_KEY", "your_secure_api_key_here")
 
 @app.middleware("http")
 async def verify_api_key(request: Request, call_next):
