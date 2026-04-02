@@ -78,7 +78,7 @@ All major ingestion endpoints under `/api/v1/*` are heavily protected. Include t
 
 ```json
 {
-  "x-api-key": "<API_KEY>"
+  "x-api-key": "your_secure_api_key_here"
 }
 ```
 *(By default, `/api/v1/status/health` routes remain exposed for load balancers lacking API authorization payloads)*.
