@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enterprise RAG Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+        .glass { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.3); }
+        .chat-bubble-user { background: #3b82f6; color: white; border-radius: 18px 18px 2px 18px; }
+        .chat-bubble-bot { background: #f1f5f9; color: #1e293b; border-radius: 18px 18px 18px 2px; }
+        .gradient-text { background: linear-gradient(90deg, #3b82f6, #8b5cf6); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+    </style>
+</head>
+<body class="h-screen overflow-hidden flex flex-col">
+
+    <!-- Header / Nav -->
+    <nav class="glass sticky top-0 z-50 px-8 py-4 flex justify-between items-center border-b border-slate-200">
+        <div class="flex items-center gap-2">
+            <div class="bg-blue-600 p-2 rounded-lg text-white">
+                <i data-lucide="layers" class="w-5 h-5"></i>
+            </div>
+            <h1 class="text-xl font-bold tracking-tight text-slate-800">Dots<span class="text-blue-600">RAG</span></h1>
+        </div>
+        
+        <div class="flex items-center gap-6">
+            <div class="flex items-center gap-3 bg-slate-100 p-1 rounded-full border border-slate-200">
+                <button id="userBtn" onclick="setRole('user')" class="px-4 py-1.5 rounded-full text-sm font-semibold transition-all duration-200 bg-white shadow-sm text-blue-600">User</button>
+                <button id="adminBtn" onclick="setRole('admin')" class="px-4 py-1.5 rounded-full text-sm font-semibold transition-all duration-200 text-slate-500 hover:text-slate-700">Admin</button>
+            </div>
+            <div class="text-xs text-slate-400 bg-slate-100 px-3 py-1.5 rounded-md border border-slate-200 font-mono">
+                API: <span id="apiStatus" class="text-gray-400">checking...</span>
+            </div>
+        </div>
+    </nav>
+
+    <main class="flex-1 flex overflow-hidden">
+        
+        <!-- Left Panel: Upload & Stats -->
+        <aside class="w-1/3 border-r border-slate-200 flex flex-col p-6 gap-6 bg-white shrink-0">
+            
+            <!-- Upload Section -->
+            <div class="space-y-4">
+                <h2 class="text-sm font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2">
+                    <i data-lucide="upload-cloud" class="w-4 h-4"></i> Document Ingestion
+                </h2>
+                <div id="dropzone" class="border-2 border-dashed border-slate-200 rounded-2xl p-8 flex flex-col items-center justify-center gap-3 hover:border-blue-400 hover:bg-blue-50/30 transition-all cursor-pointer group">
+                    <div class="bg-blue-100 p-3 rounded-full text-blue-600 group-hover:scale-110 transition-transform">
+                        <i data-lucide="file-plus" class="w-6 h-6"></i>
+                    </div>
+                    <div class="text-center">
+                        <p class="text-sm font-semibold text-slate-700">Click or drag PDF here</p>
+                        <p class="text-xs text-slate-400">Max size 200MB • dots-ocr optimized</p>
+                    </div>
+                    <input type="file" id="fileInput" class="hidden" accept=".pdf" multiple>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-[10px] uppercase tracking-wider font-bold mb-1.5 opacity-60">User ID</label>
+                            <input type="text" id="userId" value="3579a2bd-d52d-416c-a3f7-cea0a901e176" 
+                                class="w-full bg-slate-50 border border-slate-200 rounded px-3 py-2 text-xs focus:ring-1 focus:ring-blue-500 outline-none transition-all">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] uppercase tracking-wider font-bold mb-1.5 opacity-60">Department</label>
+                            <input type="text" id="deptId" value="cb2c3b75-8db7-4035-812f-4a7c82ac62f9" 
+                                class="w-full bg-slate-50 border border-slate-200 rounded px-3 py-2 text-xs focus:ring-1 focus:ring-blue-500 outline-none transition-all">
+                        </div>
+                </div>
+
+                <div id="adminPanel" class="hidden animate-in fade-in duration-300">
+                    <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
+                        <i data-lucide="shield-check" class="w-5 h-5 text-amber-600 mt-0.5"></i>
+                        <div>
+                            <p class="text-xs font-bold text-amber-800">Admin Privileges Active</p>
+                            <p class="text-[10px] text-amber-600">Documents uploaded as admin are shared cross-department by default.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <button id="uploadBtn" class="w-full bg-slate-900 hover:bg-blue-600 text-white font-semibold py-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-500/10">
+                    Process Document
+                </button>
+                <div id="batchStatus" class="hidden text-[10px] bg-blue-50 border border-blue-100 p-2 rounded-lg text-blue-600 font-medium">
+                    <div class="flex justify-between mb-1">
+                        <span id="batchFile">Starting...</span>
+                        <span id="batchCount">0/0</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Active Jobs Section -->
+            <div class="flex-1 min-h-0 flex flex-col gap-4">
+                <div class="flex justify-between items-center">
+                    <h2 class="text-sm font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2">
+                        <i data-lucide="activity" class="w-4 h-4"></i> Pipeline Activity
+                    </h2>
+                    <div class="flex gap-2">
+                        <button onclick="clearDone()" class="text-[9px] hover:text-blue-600 font-bold uppercase text-slate-400">Clear Done</button>
+                        <span id="jobCount" class="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-bold">0 Active</span>
+                    </div>
+                </div>
+                <div id="jobList" class="flex-1 overflow-y-auto space-y-3 pr-2 font-inter">
+                    <!-- Job Card Template -->
+                </div>
+            </div>
+        </aside>
+
+        <!-- Right Panel: Chat -->
+        <section class="flex-1 flex flex-col bg-slate-50 relative">
+            
+            <!-- Chat Messages -->
+            <div id="chatBox" class="flex-1 overflow-y-auto p-10 flex flex-col gap-6 scroll-smooth">
+                <div class="flex flex-col items-center justify-center h-full text-slate-400 gap-4 opacity-40">
+                    <i data-lucide="message-square-plus" class="w-16 h-16 stroke-1"></i>
+                    <p class="text-sm font-medium">Ask anything about your uploaded documents.</p>
+                </div>
+            </div>
+
+            <!-- Chat Inputs -->
+            <div class="p-6 bg-white border-t border-slate-200 glass mx-10 mb-6 rounded-2xl shadow-xl shadow-slate-200/50">
+                <div class="flex gap-4">
+                    <div class="flex-1 relative">
+                        <textarea id="chatInput" rows="1" placeholder="Type your query... (e.g. 'What is the total amount in the latest invoice?')" class="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 pr-12 outline-none focus:ring-2 focus:ring-blue-500/20 text-sm resize-none"></textarea>
+                        <button id="sendBtn" class="absolute right-2 top-2 p-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                            <i data-lucide="arrow-up" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="flex gap-4 mt-3">
+                    <select id="searchMode" class="text-[10px] bg-slate-100 px-2 py-1 rounded font-bold uppercase text-slate-500 outline-none hover:bg-slate-200 cursor-pointer transition-colors">
+                        <option value="vector">Vector Search (HNSW)</option>
+                        <option value="keyword">Keyword (BM25)</option>
+                        <option value="hybrid">Hybrid Search</option>
+                    </select>
+                    <div class="text-[10px] text-slate-400 flex items-center gap-1">
+                        <i data-lucide="cpu" class="w-3 h-3"></i> Powered by Qwen 2.5
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        lucide.createIcons();
+        const API_BASE = "http://localhost:8000/api/v1";
+        const API_KEY = "dots-rag-707-secure-access";
+        let currentRole = 'user';
+        let activeJobs = [];
+
+        // Role Management
+        function setRole(role) {
+            currentRole = role;
+            document.getElementById('userBtn').className = role === 'user' ? 'px-4 py-1.5 rounded-full text-sm font-semibold transition-all duration-200 bg-white shadow-sm text-blue-600' : 'px-4 py-1.5 rounded-full text-sm font-semibold transition-all duration-200 text-slate-500 hover:text-slate-700';
+            document.getElementById('adminBtn').className = role === 'admin' ? 'px-4 py-1.5 rounded-full text-sm font-semibold transition-all duration-200 bg-white shadow-sm text-blue-600' : 'px-4 py-1.5 rounded-full text-sm font-semibold transition-all duration-200 text-slate-500 hover:text-slate-700';
+            document.getElementById('adminPanel').classList.toggle('hidden', role === 'user');
+        }
+
+        // Dropzone integration
+        const dz = document.getElementById('dropzone');
+        const fi = document.getElementById('fileInput');
+        
+        dz.onclick = () => fi.click();
+        dz.ondragover = (e) => { e.preventDefault(); dz.classList.add('border-blue-400', 'bg-blue-50'); };
+        dz.ondragleave = (e) => { e.preventDefault(); dz.classList.remove('border-blue-400', 'bg-blue-50'); };
+        dz.ondrop = (e) => {
+            e.preventDefault();
+            dz.classList.remove('border-blue-400', 'bg-blue-50');
+            if (e.dataTransfer.files.length) {
+                const dt = new DataTransfer();
+                for (let file of e.dataTransfer.files) dt.items.add(file);
+                fi.files = dt.files;
+            }
+        };
+
+        // UI Event Handlers
+        document.getElementById('uploadBtn').onclick = async () => {
+            const files = fi.files;
+            if(!files.length) return alert("Select one or more PDFs first");
+
+            const btn = document.getElementById('uploadBtn');
+            const batchStatus = document.getElementById('batchStatus');
+            const batchFile = document.getElementById('batchFile');
+            const batchCount = document.getElementById('batchCount');
+            
+            const originalText = btn.innerText;
+            btn.disabled = true;
+            btn.innerText = `Uploading ${files.length} files...`;
+            batchStatus.classList.remove('hidden');
+
+            for(let i=0; i<files.length; i++) {
+                const file = files[i];
+                batchFile.innerText = `Sending: ${file.name}`;
+                batchCount.innerText = `${i+1}/${files.length}`;
+                
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('user_id', document.getElementById('userId').value);
+                formData.append('dept_id', document.getElementById('deptId').value);
+                formData.append('upload_type', currentRole);
+
+                try {
+                    const resp = await fetch(`${API_BASE}/upload`, { 
+                        method: 'POST', 
+                        headers: { 'x-api-key': API_KEY },
+                        body: formData 
+                    });
+                    const data = await resp.json();
+                    if(data.file_id) {
+                        trackJob(data.file_id, data.session_id, file.name);
+                    }
+                } catch (e) { 
+                    console.error("Upload Failed for " + file.name, e); 
+                }
+            }
+            
+            fi.value = '';
+            btn.disabled = false;
+            btn.innerText = originalText;
+            setTimeout(() => batchStatus.classList.add('hidden'), 5000);
+        };
+
+        async function trackJob(fileId, sessId, name) {
+            const job = { fileId, sessId, name, status: 'queued', pct: 0 };
+            activeJobs.unshift(job);
+            updateJobUI();
+            
+            const timer = setInterval(async () => {
+                try {
+                    const r = await fetch(`${API_BASE}/status/${fileId}?session_id=${sessId}`, {
+                        headers: { 'x-api-key': API_KEY }
+                    });
+                    const s = await r.json();
+                    job.status = s.stage;
+                    job.pct = s.pct;
+                    if(['done', 'error', 'skipped'].includes(s.stage)) clearInterval(timer);
+                    updateJobUI();
+                } catch (e) { clearInterval(timer); }
+            }, 3000);
+        }
+
+        function updateJobUI() {
+            const container = document.getElementById('jobList');
+            document.getElementById('jobCount').innerText = `${activeJobs.filter(j => j.status !== 'done').length} Active`;
+            
+            const stageMap = {
+                'queued': 'Queueing...',
+                'dots_ocr': 'DotsOCR Parsing...',
+                'chunking': 'Document Chunking...',
+                'embedding': 'Vectorizing (MixedBread)...',
+                'storing': 'Finalizing Storage...',
+                'done': 'Ready for Chat ✓',
+                'error': 'Failed ✗'
+            };
+
+            container.innerHTML = activeJobs.map(j => `
+                <div class="p-4 bg-white border border-slate-200 rounded-xl shadow-sm space-y-3">
+                    <div class="flex justify-between items-start">
+                        <div class="flex items-center gap-2 truncate">
+                            <i data-lucide="file-text" class="w-4 h-4 ${j.status==='done' ? 'text-green-500' : 'text-blue-600'}"></i>
+                            <span class="text-xs font-bold text-slate-700 truncate">${j.name}</span>
+                        </div>
+                        <span class="text-[9px] font-black uppercase ${j.status==='done' ? 'text-green-600 bg-green-50' : 'text-blue-600 bg-blue-50'} px-2 py-0.5 rounded">
+                            ${j.status}
+                        </span>
+                    </div>
+                    <div class="flex justify-between items-center text-[10px] font-medium">
+                        <span class="${j.status==='error' ? 'text-red-500' : 'text-slate-400'}">${j.error ? j.error : (stageMap[j.status] || j.status)}</span>
+                        <span class="text-slate-400">${Math.round(j.pct)}%</span>
+                    </div>
+                    <div class="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                        <div class="h-1.5 rounded-full transition-all duration-700 ${j.status==='done' ? 'bg-green-500' : 'bg-blue-600'}" style="width: ${j.pct}%"></div>
+                    </div>
+                </div>
+            `).join('');
+            lucide.createIcons();
+        }
+
+        function clearDone() {
+            activeJobs = activeJobs.filter(j => j.status !== 'done' && j.status !== 'error');
+            updateJobUI();
+        }
+
+        // Chat logic
+        const chatBox = document.getElementById('chatBox');
+        const chatInput = document.getElementById('chatInput');
+
+        async function postChat() {
+            const text = chatInput.value.trim();
+            if(!text) return;
+            
+            addBubble('user', text);
+            chatInput.value = '';
+            
+            const loadingBubble = addBubble('bot', '...', true);
+
+            try {
+                const resp = await fetch(`${API_BASE}/chat`, {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'x-api-key': API_KEY
+                    },
+                    body: JSON.stringify({
+                        message: text,
+                        user_id: document.getElementById('userId').value,
+                        dept_id: document.getElementById('deptId').value,
+                        search_mode: document.getElementById('searchMode').value
+                    })
+                });
+                const data = await resp.json();
+                loadingBubble.remove();
+                addBubble('bot', data.answer, false, data.sources);
+            } catch (e) { 
+                loadingBubble.innerText = "Error: " + e;
+            }
+        }
+
+        function addBubble(role, text, isLoading = false, sources = []) {
+            if(chatBox.children.length === 1 && chatBox.querySelector('.opacity-40')) chatBox.innerHTML = '';
+            
+            const div = document.createElement('div');
+            div.className = `flex ${role === 'user' ? 'justify-end' : 'justify-start'}`;
+            
+            const inner = document.createElement('div');
+            inner.className = `max-w-[80%] p-4 text-sm ${role === 'user' ? 'chat-bubble-user font-medium shadow-lg' : 'chat-bubble-bot border border-slate-200'}`;
+            
+            let content = text;
+            if(sources && sources.length > 0) {
+                content += `<div class="mt-4 pt-3 border-t border-slate-200/50">
+                    <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Sources Found (${sources.length})</p>
+                    <div class="flex flex-wrap gap-2">
+                        ${sources.map(s => `<span class="bg-blue-50 text-blue-600 text-[10px] px-2 py-0.5 rounded-md font-bold">📄 ${s.file_name} (p.${s.page_num})</span>`).join('')}
+                    </div>
+                </div>`;
+            }
+
+            inner.innerHTML = content;
+            div.appendChild(inner);
+            chatBox.appendChild(div);
+            chatBox.scrollTop = chatBox.scrollHeight;
+            return inner;
+        }
+
+        document.getElementById('sendBtn').onclick = postChat;
+        chatInput.onkeydown = (e) => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); postChat(); } };
+
+        // Health check
+        setInterval(async () => {
+            try {
+                const r = await fetch('http://localhost:8000/api/v1/status/health', { method: 'GET' });
+                const s = await r.json();
+                const el = document.getElementById('apiStatus');
+                el.innerText = "ONLINE";
+                el.className = "text-green-500 font-bold animate-pulse";
+            } catch (e) {
+                const el = document.getElementById('apiStatus');
+                el.innerText = "OFFLINE";
+                el.className = "text-red-500 font-bold";
+            }
+        }, 5000);
+
+    </script>
+</body>
+</html>
