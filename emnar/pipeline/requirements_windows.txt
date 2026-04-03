@@ -1,0 +1,30 @@
+# ── Core OCR ──────────────────────────────────────────────────────────────────
+transformers==4.51.3
+accelerate
+qwen_vl_utils
+huggingface_hub
+modelscope
+flash-attn==2.8.0.post2       # CUDA only — remove on non-CUDA machines
+
+# ── PDF / Image ───────────────────────────────────────────────────────────────
+PyMuPDF
+Pillow
+
+# ── Chunking ──────────────────────────────────────────────────────────────────
+langchain-text-splitters
+
+# ── Embedding (OpenAI — used by ocr_embed_pipeline.py) ───────────────────────
+openai
+
+# ── PostgreSQL + pgvector ─────────────────────────────────────────────────────
+psycopg2-binary
+
+# ── Config ────────────────────────────────────────────────────────────────────
+python-dotenv
+
+# ── Demo / UI (optional) ──────────────────────────────────────────────────────
+gradio
+gradio_image_annotation
+
+# ── Deployment (optional) ─────────────────────────────────────────────────────
+runpod

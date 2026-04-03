@@ -1,0 +1,31 @@
+# ── Core OCR ──────────────────────────────────────────────────────────────────
+transformers==4.51.3
+accelerate
+qwen_vl_utils
+huggingface_hub
+modelscope
+# flash-attn is NOT compatible with Apple Silicon — omitted intentionally
+
+# ── PDF / Image ───────────────────────────────────────────────────────────────
+PyMuPDF
+Pillow
+
+# ── Chunking ──────────────────────────────────────────────────────────────────
+langchain-text-splitters
+
+# ── Embedding (local — used by ocr_embed_pipeline_local.py) ──────────────────
+sentence-transformers
+
+# ── PyTorch for Apple Silicon MPS ─────────────────────────────────────────────
+torch
+torchvision
+
+# ── PostgreSQL + pgvector ─────────────────────────────────────────────────────
+psycopg2-binary
+
+# ── Config ────────────────────────────────────────────────────────────────────
+python-dotenv
+
+# ── Demo / UI (optional) ──────────────────────────────────────────────────────
+gradio
+gradio_image_annotation

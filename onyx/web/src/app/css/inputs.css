@@ -1,0 +1,28 @@
+/* Input styling */
+.input-normal {
+  background-color: var(--background-neutral-00);
+  border: 1px solid var(--border-01);
+}
+.input-normal:hover {
+  border-color: var(--border-02);
+}
+.input-normal:active {
+  border-color: var(--border-05);
+}
+.input-normal:focus:not(:active),
+.input-normal:focus-within:not(:active) {
+  border-color: var(--theme-primary-04);
+  box-shadow: 0 0 0 3px var(--action-link-01);
+  outline: none;
+}
+
+.input-error {
+  background-color: var(--background-neutral-00);
+  border: 1px solid var(--status-error-05);
+}
+
+.input-disabled {
+  background-color: var(--background-neutral-03);
+  border: 1px solid transparent;
+  cursor: not-allowed;
+}

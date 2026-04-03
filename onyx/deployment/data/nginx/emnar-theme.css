@@ -1,0 +1,226 @@
+/* =============================================================================
+   EMNAR / VIRCHOW — CSS Theme Override
+   Injected at the nginx layer. Overrides compiled Onyx CSS variables.
+   Warm off-white light mode • Deep warm-charcoal dark mode • Indigo accent
+   ============================================================================= */
+
+/* ── FONTS ── */
+@import url("https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300;0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;1,14..32,400&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap");
+
+/* ── LIGHT MODE ── */
+:root {
+  /* Fonts */
+  --font-hanken-grotesk: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+  --font-dm-mono: "JetBrains Mono", "SF Mono", Monaco, monospace !important;
+  --font-kh-teka: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+
+  /* Border radii — tighter, more refined */
+  --border-radius-08: 0.375rem;
+  --border-radius-12: 0.5rem;
+  --border-radius-16: 0.75rem;
+
+  /* Backgrounds — warm off-white */
+  --background-tint-00: #fdfcfb;
+  --background-tint-01: #faf9f7;
+  --background-tint-02: #f5f5f4;
+  --background-tint-03: #e7e5e4;
+  --background-tint-04: #d6d3d1;
+  --background-neutral-00: #fdfcfb;
+  --background-neutral-01: #faf9f7;
+  --background-neutral-02: #f5f5f4;
+  --background-neutral-03: #e7e5e4;
+  --background-neutral-04: #d6d3d1;
+
+  /* Text — warm charcoal */
+  --text-05: #1c1917e5;
+  --text-04: #1c1917bf;
+  --text-03: #1c19178c;
+  --text-02: #1c191773;
+  --text-01: #1c191733;
+
+  /* Borders — whisper-thin warm */
+  --border-01: #e7e5e4;
+  --border-02: #d6d3d1;
+  --border-03: #a8a29e;
+  --border-04: #78716c;
+  --border-05: #1c1917;
+
+  /* Theme — indigo accent */
+  --theme-primary-06: #312e81;
+  --theme-primary-05: #3730a3;
+  --theme-primary-04: #4338ca;
+
+  /* Action links — indigo */
+  --action-link-06: #312e81;
+  --action-link-05: #4f46e5;
+  --action-link-04: #6366f1;
+  --action-link-03: #a5b4fc;
+  --action-link-02: #c7d2fe;
+  --action-link-01: #e0e7ff;
+  --action-link-00: #eef2ff;
+  --action-text-link-05: #4f46e5;
+
+  /* Focus ring */
+  --focus-ring: 0 0 0 3px #e0e7ff;
+
+  /* Shadows — barely-there warm */
+  --shadow-01: #1c19170a;
+  --shadow-02: #1c191714;
+  --shadow-03: #1c191726;
+
+  /* Shimmer */
+  --shimmer-base: #d6d3d1;
+  --shimmer-highlight: #78716c;
+}
+
+/* ── DARK MODE ── */
+.dark {
+  /* Backgrounds — deep warm charcoal */
+  --background-tint-00: #141210;
+  --background-tint-01: #1c1917;
+  --background-tint-02: #292524;
+  --background-tint-03: #3c3836;
+  --background-tint-04: #44403c;
+  --background-neutral-00: #141210;
+  --background-neutral-01: #1c1917;
+  --background-neutral-02: #292524;
+  --background-neutral-03: #3c3836;
+  --background-neutral-04: #44403c;
+
+  /* Text — warm off-white */
+  --text-05: #faf9f7f2;
+  --text-04: #faf9f7d9;
+  --text-03: #faf9f799;
+  --text-02: #faf9f773;
+  --text-01: #faf9f733;
+
+  /* Borders — warm subtle */
+  --border-01: #292524;
+  --border-02: #3c3836;
+  --border-03: #57534e;
+  --border-04: #78716c;
+  --border-05: #faf9f7;
+
+  /* Theme — light indigo in dark */
+  --theme-primary-06: #e0e7ff;
+  --theme-primary-05: #c7d2fe;
+  --theme-primary-04: #a5b4fc;
+
+  /* Action links — lighter indigo */
+  --action-link-06: #a5b4fc;
+  --action-link-05: #818cf8;
+  --action-link-04: #6366f1;
+  --action-link-03: #2c256b;
+  --action-link-02: #201a52;
+  --action-link-01: #16113a;
+  --action-link-00: #0d0a1e;
+  --action-text-link-05: #818cf8;
+
+  /* Shadows */
+  --shadow-01: #00000014;
+  --shadow-02: #00000026;
+  --shadow-03: #00000040;
+
+  /* Shimmer */
+  --shimmer-base: #44403c;
+  --shimmer-highlight: #a8a29e;
+}
+
+/* ── GLOBAL REFINEMENTS ── */
+
+/* Apply Inter everywhere */
+*, *::before, *::after {
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Monospace exceptions */
+code, pre, kbd, samp, [class*="mono"] {
+  font-family: "JetBrains Mono", "SF Mono", Monaco, monospace !important;
+}
+
+/* Body background */
+body {
+  background-color: var(--background-tint-01) !important;
+  color: var(--text-04) !important;
+}
+
+/* Input focus ring — indigo glow */
+input:focus, textarea:focus, select:focus,
+[class*="input-normal"]:focus,
+[class*="input-normal"]:focus-within {
+  border-color: #6366f1 !important;
+  box-shadow: 0 0 0 3px #e0e7ff !important;
+  outline: none !important;
+}
+.dark input:focus, .dark textarea:focus,
+.dark [class*="input-normal"]:focus,
+.dark [class*="input-normal"]:focus-within {
+  border-color: #818cf8 !important;
+  box-shadow: 0 0 0 3px #16113a !important;
+}
+
+/* Scrollbar — thin and refined */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-02); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-03); }
+
+/* Primary button — indigo */
+.button-main-primary {
+  background-color: #3730a3 !important;
+  border-radius: var(--border-radius-08) !important;
+}
+.button-main-primary:hover { background-color: #312e81 !important; }
+.button-main-primary:active { background-color: #1e1b4b !important; }
+.dark .button-main-primary { background-color: #c7d2fe !important; }
+.dark .button-main-primary:hover { background-color: #e0e7ff !important; }
+.dark .button-main-primary .button-main-primary-text { color: #1e1b4b !important; }
+.dark .button-main-primary .button-main-primary-icon { stroke: #1e1b4b !important; }
+
+/* Secondary/tertiary button — softer */
+.button-main-secondary {
+  border-color: var(--border-01) !important;
+  border-radius: var(--border-radius-08) !important;
+}
+.button-main-tertiary { border-radius: var(--border-radius-08) !important; }
+
+/* Card — tighter radius */
+.card { border-radius: var(--border-radius-12) !important; }
+
+/* Sidebar background */
+.dark [class*="sidebar"],
+.dark [class*="Sidebar"] {
+  background-color: #141210 !important;
+}
+[class*="sidebar"],
+[class*="Sidebar"] {
+  background-color: #faf9f7 !important;
+  border-right-color: var(--border-01) !important;
+}
+
+/* Chat input area */
+.dark [class*="chat"],
+.dark [class*="Chat"] {
+  background-color: #1c1917 !important;
+}
+
+/* Page title / headings — refined weight */
+h1, [class*="heading-h1"] { font-weight: 500 !important; letter-spacing: -0.03em !important; }
+h2, [class*="heading-h2"] { font-weight: 500 !important; letter-spacing: -0.02em !important; }
+h3, [class*="heading-h3"] { font-weight: 500 !important; letter-spacing: -0.01em !important; }
+
+/* Link color */
+a { color: var(--action-text-link-05) !important; }
+a:hover { color: var(--action-link-06) !important; }
+.dark a { color: var(--action-text-link-05) !important; }
+
+/* Remove harsh outlines, use refined focus */
+*:focus-visible {
+  outline: 2px solid #6366f1 !important;
+  outline-offset: 2px !important;
+  border-radius: var(--border-radius-04) !important;
+}
+.dark *:focus-visible { outline-color: #818cf8 !important; }
